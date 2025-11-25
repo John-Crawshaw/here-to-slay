@@ -1,0 +1,213 @@
+/* src/Card.css */
+
+/* --- 1. BASE CARD CONTAINER --- */
+.card {
+  width: 150px; 
+  height: 220px;
+  border-radius: 12px;
+  border: 2px solid #333; /* Dark border for definition */
+  background: white;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all 0.2s ease-in-out;
+  user-select: none;
+  cursor: pointer;
+  overflow: hidden; 
+  box-shadow: 2px 4px 8px rgba(0,0,0,0.2); 
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 5px;
+  color: #333; /* Default text color is Dark Gray (not white) */
+}
+
+/* --- 2. CARD TYPES (COLOR CODING) --- */
+
+/* HERO: Red Header / Light Pink Body */
+.card.hero { background-color: #fff0f0; border-color: #d63031; }
+.card.hero .card-header { background-color: #d63031; color: white; } /* White text on Red */
+
+/* ITEM: Blue Header / Light Blue Body */
+.card.item { background-color: #f0f8ff; border-color: #0984e3; }
+.card.item .card-header { background-color: #0984e3; color: white; } /* White text on Blue */
+
+/* MAGIC: Green Header / Light Green Body */
+.card.magic { background-color: #f0fff4; border-color: #00b894; }
+.card.magic .card-header { background-color: #00b894; color: white; } /* White text on Green */
+
+/* MONSTER: Dark Gray Header / Light Gray Body */
+.card.monster { background-color: #dfe6e9; border-color: #2d3436; }
+.card.monster .card-header { background-color: #2d3436; color: white; } /* White text on Dark Gray */
+
+/* PARTY LEADER: Orange Header / Light Orange Body */
+.card.leader { background-color: #fff8e1; border-color: #e67e22; border-width: 3px; }
+.card.leader .card-header { background-color: #e67e22; color: white; } /* White text on Orange */
+
+/* CHALLENGE: Purple Header */
+.card.challenge { background-color: #f3e5f5; border-color: #8e44ad; }
+.card.challenge .card-header { background-color: #8e44ad; color: white; }
+
+/* --- 3. INTERNALS (Header, Image, Body) --- */
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-weight: 800; /* Extra bold */
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+  min-height: 24px;
+  align-items: center;
+}
+
+.card-image {
+  height: 80px;
+  background: rgba(0,0,0,0.05); /* Very light gray */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 2px solid rgba(0,0,0,0.1);
+  margin: 5px;
+  border-radius: 4px;
+  color: #555; /* Icon color */
+}
+
+.art-placeholder { font-size: 2rem; opacity: 0.5; }
+
+.card-body {
+  padding: 5px 8px;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.card-body h4 { 
+  margin: 0 0 5px 0; 
+  font-size: 0.95rem; 
+  color: #000; /* Black title */
+  font-weight: bold;
+}
+
+.card-body p {
+  font-size: 0.75rem; 
+  line-height: 1.3; 
+  color: #2d3436; /* Dark gray text */
+  margin: 0;
+}
+
+/* Specific Monster Stats Block */
+.monster-stats {
+  margin-top: 8px;
+  background: rgba(255,255,255,0.6);
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  padding: 4px;
+}
+.monster-stats p {
+  font-size: 0.7rem;
+  margin-bottom: 2px;
+  color: #000;
+}
+
+/* --- 4. INTERACTION STATES --- */
+.card:hover { transform: translateY(-8px); z-index: 10; box-shadow: 4px 8px 15px rgba(0,0,0,0.3); }
+
+/* Selected state - Gold Glow */
+.card.selected { 
+  border: 3px solid #f1c40f; 
+  box-shadow: 0 0 0 4px rgba(241, 196, 15, 0.6); 
+  transform: translateY(-15px); 
+}
+
+/* Selectable state (in hand) */
+.card.selectable:hover { cursor: pointer; }
+
+/* --- 5. MINI CARDS (ON BOARD) --- */
+.card.mini { 
+  width: 75px; 
+  height: 100px; 
+  padding: 0; 
+  align-items: center; 
+  justify-content: flex-start;
+}
+
+/* Hide normal internals */
+.card.mini .card-header, 
+.card.mini .card-body, 
+.card.mini .card-footer, 
+.card.mini .card-image { display: none; }
+
+/* Mini Colored Top Strip */
+.card-header-strip {
+  width: 100%;
+  height: 12px;
+  /* Inherits color from parent class rules above */
+}
+.card.hero .card-header-strip { background-color: #d63031; }
+.card.item .card-header-strip { background-color: #0984e3; }
+.card.magic .card-header-strip { background-color: #00b894; }
+.card.monster .card-header-strip { background-color: #2d3436; }
+.card.leader .card-header-strip { background-color: #e67e22; }
+
+.card.mini .card-icon { 
+  font-size: 1.8rem; 
+  margin: 5px 0 2px 0; 
+  color: #444; 
+}
+
+.mini-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 0 2px;
+}
+
+.card.mini small { 
+  font-size: 0.65rem; 
+  text-align: center; 
+  font-weight: bold; 
+  line-height: 1.1; 
+  color: #000; /* Black text */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 90%;
+}
+
+.roll-req { 
+  display: block; 
+  color: #c0392b; /* Dark red */
+  font-weight: 800; 
+  font-size: 0.75rem; 
+  margin-top: 2px; 
+}
+
+.req-text {
+  font-size: 0.6rem;
+  color: #555;
+}
+
+/* --- 6. GAMEPLAY STATES --- */
+
+/* Used State */
+.card.mini.used { 
+  filter: grayscale(100%); 
+  opacity: 0.5; 
+  cursor: default; 
+  transform: none; 
+}
+
+/* Roll Button */
+.btn-roll {
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #fdcb6e;
+  border: 1px solid #2d3436;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 20;
+  color: #000;
+}
+.btn-roll:hover { background: #ffeaa7; transform: translateX(-50%) scale(1.1); }
