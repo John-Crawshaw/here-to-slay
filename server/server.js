@@ -74,7 +74,7 @@ io.on('connection', (socket) => {
     const gameId = playerMap.get(socket.id);
     const game = games.get(gameId);
     if(game) {
-        const result = game.discardAndDraw(socket.id);
+        const result = game.discardHand(socket.id);
         if(result.error) socket.emit('error', result.error);
         else broadcastGameState(gameId);
     }

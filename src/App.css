@@ -165,6 +165,23 @@ button:disabled { background-color: #7f8c8d; color: #bdc3c7; cursor: not-allowed
   font-weight: bold;
 }
 
+.slayed-monsters-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  align-items: center;
+  padding: 10px 0; /* Add some breathing room */
+  
+  /* The Fix: Auto height allows it to fit the cards exactly, instead of forcing 260px */
+  height: auto; 
+  min-height: 100px; /* Minimum space to ensure it's not squashed to 0 */
+}
+
+.slayed-monsters-row .card {
+  transform: scale(0.9);
+  transform-origin: top left;
+}
+
 /* --- 3. MY AREA (Bottom - Compact Dashboard) --- */
 .my-area {
   background: #1a252f;
@@ -205,6 +222,8 @@ button:disabled { background-color: #7f8c8d; color: #bdc3c7; cursor: not-allowed
   border-right: 1px solid rgba(255,255,255,0.1);
   padding-right: 10px;
   min-width: 200px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* Middle Column: Hand (Takes most space) */

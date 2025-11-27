@@ -382,18 +382,29 @@ function App() {
       )}
 
       {/* OPPONENTS */}
-      <div className="opponents-container">
-        {gameState.players.filter(p => p.id !== playerId).map(p => (
-          <div key={p.id} className="opponent-area">
-            <h4>{p.name} (Hand: {p.handCount})</h4>
-            <div className="party-row">
-                {p.partyLeader && <Card card={p.partyLeader} isMini={true} />}
-                {p.party.map((c, i) => <Card key={i} card={c} isMini={true} />)}
-            </div>
-            <div style={{fontSize:'0.7rem', color:'gold'}}>🏆 {p.slayedMonsters.length}</div>
-          </div>
-        ))}
-      </div>
+    <div className="opponents-container">
+    {gameState.players.filter(p => p.id !== playerId).map(p => (
+        <div key={p.id} className="opponent-area">
+        <h4>{p.name} (Hand: {p.handCount})</h4>
+        <div className="party-row">
+            {p.partyLeader && <Card card={p.partyLeader} isMini={true} />}
+            {p.party.map((c, i) => <Card key={i} card={c} isMini={true} />)}
+        </div>
+                {p.slayedMonsters.length > 0 && (
+                <div style={{marginTop: '10px'}}>
+                    <div style={{fontSize:'0.8rem', color:'gold', marginBottom: '5px'}}>
+                    🏆 Slayed Monsters ({p.slayedMonsters.length})
+                    </div>
+                    
+                    {/* CHANGE className FROM "party-row" TO "slayed-monsters-row" */}
+                    <div className="slayed-monsters-row">
+                    {p.slayedMonsters.map((m, i) => <Card key={i} card={m} isMini={true} />)}
+                    </div>
+                </div>
+                )}
+        </div>
+    ))}
+    </div>
 
       {/* MY AREA */}
       <div className="my-area">
@@ -411,6 +422,21 @@ function App() {
                     <Card key={i} card={c} isMini={true} canRoll={isMyTurn && c.type === 'HERO'} onRoll={useHeroAbility}/>
                 ))}
             </div>
+            
+            {gameState.players.find(p => p.id === playerId)?.slayedMonsters.length > 0 && (
+            <div style={{marginTop: '10px'}}>
+                <div style={{fontSize:'0.9rem', color:'gold', marginBottom: '8px'}}>
+                    🏆 Slayed Monsters ({gameState.players.find(p => p.id === playerId)?.slayedMonsters.length})
+                </div>
+                
+                {/* CHANGE className FROM "party-row" TO "slayed-monsters-row" */}
+                <div className="slayed-monsters-row"> 
+                    {gameState.players.find(p => p.id === playerId)?.slayedMonsters.map((m, i) => (
+                        <Card key={i} card={m} isMini={true} />
+                    ))}
+                </div>
+            </div>
+            )}
         </div>
 
         <div className="my-hand">

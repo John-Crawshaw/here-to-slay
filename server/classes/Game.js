@@ -432,7 +432,19 @@ class Game {
     if (this.actionPoints < 2) return { error: "Need 2 AP" };
 
     const monster = this.activeMonsters.find(m => m.id === monsterId);
-    // (Add your requirement checks here: if(monster.reqCount > party.length)... etc)
+    if (!monster) return { error: "Monster not found" };
+
+    const player = this.players.find(p => p.id === playerId);
+    
+    // Check hero count requirement
+    if (monster.reqCount && player.party.filter(c => c.type === 'HERO').length < monster.reqCount) {
+      return { error: `Need ${monster.reqCount} hero${monster.reqCount > 1 ? 'es' : ''} in party` };
+    }
+
+    // Check class requirement
+    if (monster.reqClass && !player.party.some(c => c.class === monster.reqClass)) {
+      return { error: `Need a ${monster.reqClass} in party` };
+    }
 
     this.actionPoints -= 2;
     this.createRoll(playerId, 'ATTACK', monster.rollTarget, monsterId, monster.failTarget);
@@ -496,9 +508,24 @@ class Game {
   }
 
   discardHand(playerId) {
-      // ... (your existing discard logic)
-      this.actionPoints -= 3;
-      return { success: true };
+    if (this.players[this.currentTurnIndex].id !== playerId) return { error: "Not turn" };
+    if (this.actionPoints < 3) return { error: "Need 3 AP" };
+    
+    const p = this.players.find(p => p.id === playerId);
+    
+    // Discard current hand
+    this.discardPile.push(...p.hand);
+    p.hand = [];
+    
+    // Draw 5 new cards
+    for(let i = 0; i < 5; i++) {
+      if(this.deck.length > 0) {
+        p.hand.push(this.deck.pop());
+      }
+    }
+    
+    this.actionPoints -= 3;
+    return { success: true };
   }
 
   endTurn() {
@@ -520,12 +547,16 @@ class Game {
       winner: this.winner,
       currentTurn: this.currentTurnIndex,
       activeMonsters: this.activeMonsters,
-      activeRoll: this.activeRoll, // IMPORTANT
+      activeRoll: this.activeRoll,
       actionPoints: this.actionPoints,
       challengeState: this.challengeState,
       players: this.players.map(p => ({
-        id: p.id, name: p.name, partyLeader: p.partyLeader, 
-        party: p.party, slayedMonsters: p.slayedMonsters, handCount: p.hand.length 
+        id: p.id, 
+        name: p.name, 
+        partyLeader: p.partyLeader, 
+        party: p.party, 
+        slayedMonsters: p.slayedMonsters, 
+        handCount: p.hand.length 
       }))
     };
   }
