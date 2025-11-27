@@ -77,8 +77,6 @@ class Game {
   // --- ROLL MECHANICS ---
 
   createRoll(playerId, type, targetVal, sourceCardId, failVal = 0) {
-    const base = Math.floor(Math.random() * 6) + 1 + Math.floor(Math.random() * 6) + 1;
-    
     const player = this.players.find(p => p.id === playerId);
     const sourceCard = type === 'ATTACK' 
         ? this.activeMonsters.find(m => m.id === sourceCardId)
@@ -87,23 +85,48 @@ class Game {
     // Leader Bonus Logic
     let bonus = 0;
     if (type === 'HERO_ABILITY' && player.partyLeader && sourceCard && player.partyLeader.class === sourceCard.class) {
-        bonus = 2; // Usually +1 in standard rules, keeping your +2 logic
+        bonus = 2; 
     }
 
     this.activeRoll = {
         active: true,
+        phase: 'WAITING', // <--- Waits for user click
         playerId,
         type, 
         sourceCardId,
-        baseRoll: base,
+        baseRoll: null,    // <--- No numbers yet
         leaderBonus: bonus,
         modifierTotal: 0,
-        currentTotal: base + bonus,
+        currentTotal: null, // <--- No numbers yet
         target: targetVal,
         failTarget: failVal,
-        history: [],
-        passedPlayers: [] // Tracks who has said "I'm good"
+        history: [], // Starts empty
+        passedPlayers: []
     };
+  }
+
+  // 2. NEW METHOD: The actual roll
+  rollMainDice(playerId) {
+    if (!this.activeRoll || !this.activeRoll.active) return;
+    if (this.activeRoll.phase !== 'WAITING') return;
+    if (this.activeRoll.playerId !== playerId) return;
+
+    // Generate Numbers
+    const r1 = Math.floor(Math.random() * 6) + 1;
+    const r2 = Math.floor(Math.random() * 6) + 1;
+    const base = r1 + r2;
+
+    this.activeRoll.baseRoll = base;
+    this.activeRoll.currentTotal = base + (this.activeRoll.leaderBonus || 0);
+    this.activeRoll.phase = 'MODIFIERS'; // Move to next phase
+    
+    // Log
+    this.activeRoll.history.push(`🎲 Rolled ${r1} + ${r2} = ${base}`);
+    if (this.activeRoll.leaderBonus > 0) {
+        this.activeRoll.history.push(`+${this.activeRoll.leaderBonus} Leader Bonus`);
+    }
+
+    return { success: true };
   }
 
   passModifier(playerId) {
@@ -116,7 +139,13 @@ class Game {
 
     // CHECK CONSENSUS: If ALL players have passed, resolve.
     if (this.activeRoll.passedPlayers.length >= this.players.length) {
-        return this.resolveCurrentRoll();
+        // --- FIX START ---
+        if (this.activeRoll.type === 'CHALLENGE') {
+            return this.resolveChallenge();
+        } else {
+            return this.resolveCurrentRoll();
+        }
+        // --- FIX END ---
     }
 
     return { success: true };
@@ -197,6 +226,8 @@ class Game {
     return { success: true };
   }
 
+  // server/classes/Game.js -> resolveCurrentRoll method
+
   resolveCurrentRoll() {
     if (!this.activeRoll?.active) return { error: "No roll" };
 
@@ -206,7 +237,10 @@ class Game {
 
     if (type === 'HERO_ABILITY') {
         const card = player.party.find(c => c.uniqueId === sourceCardId);
-        if (currentTotal >= target) {
+        // Add safety check in case card was stolen/destroyed mid-roll
+        if (!card) {
+            resultMessage = "Hero missing! Effect cancelled.";
+        } else if (currentTotal >= target) {
             resultMessage = this.resolveHeroEffect(player, card); 
         } else {
             resultMessage = "Ability Failed.";
@@ -214,21 +248,28 @@ class Game {
     } 
     else if (type === 'ATTACK') {
         const monsterIndex = this.activeMonsters.findIndex(m => m.id === sourceCardId);
-        const monster = this.activeMonsters[monsterIndex];
+        
+        if (monsterIndex === -1) {
+             resultMessage = "Monster is already gone!";
+        } else {
+            const monster = this.activeMonsters[monsterIndex];
 
-        if (currentTotal >= target) {
-             if(monsterIndex > -1) {
+            if (currentTotal >= target) {
                  this.activeMonsters.splice(monsterIndex, 1);
                  player.slayedMonsters.push(monster);
                  if (this.monsterDeck.length > 0) this.activeMonsters.push(this.monsterDeck.pop());
                  resultMessage = `Slayed ${monster.name}!`;
                  this.checkWinCondition(player);
-             }
-        } else if (currentTotal <= failTarget) {
-            resultMessage = `Attack Failed! Punishment: ${monster.punishment}`;
-             // Implement punishment (discard card, sacrifice hero) here
-        } else {
-            resultMessage = "Attack Missed.";
+            } else if (currentTotal <= failTarget) {
+                // FIXED: Actually apply punishment (Simple version: Discard 1 card)
+                resultMessage = `Attack Failed! Punishment: ${monster.punishment}`;
+                if (player.hand.length > 0) {
+                    const discarded = player.hand.pop();
+                    this.discardPile.push(discarded);
+                }
+            } else {
+                resultMessage = "Attack Missed (No punishment).";
+            }
         }
     }
 
@@ -419,9 +460,7 @@ class Game {
      const p = this.players.find(p => p.id === this.challengeState.sourcePlayerId);
      const c = this.challengeState.pendingCard;
      
-     // 1. Deduct the AP for playing the card
-     // (We do this here so it counts as 1 action total)
-     this.actionPoints -= 1;
+
 
      if (c.type === 'MAGIC') {
          this.discardPile.push(c); 

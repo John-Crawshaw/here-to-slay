@@ -81,6 +81,8 @@ export const useWebSocket = () => {
   const passChallenge = () => socketRef.current.emit('passChallenge');
   const rollChallengeDice = () => socketRef.current.emit('rollChallengeDice');
 
+  const rollMainDice = () => socketRef.current.emit('rollMainDice');
+
   // **NEW** Roll & Modifier System
   const playModifier = (cid, val) => socketRef.current.emit('playModifier', { cardId: cid, val });
   const passModifier = () => socketRef.current.emit('passModifier');
@@ -94,6 +96,7 @@ export const useWebSocket = () => {
     drawCard, discardHand, playCard, attackMonster, useHeroAbility, 
     challengeCard, passChallenge, endTurn, 
     // Export new functions
-    playModifier, passModifier, resolveRoll, rollChallengeDice, resolveNoChallenge
+    playModifier, passModifier, resolveRoll, rollChallengeDice, resolveNoChallenge,
+    rollMainDice,
   };
 };

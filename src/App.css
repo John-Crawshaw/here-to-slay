@@ -372,3 +372,29 @@ button:disabled { background-color: #7f8c8d; color: #bdc3c7; cursor: not-allowed
   border: none;
 }
 .resolve-btn:hover { background: #f39c12; }
+
+.roll-btn-large {
+  width: 100%;
+  padding: 15px;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #2c3e50;
+  background: #f1c40f; /* Bright Gold */
+  border: 3px solid white;
+  border-radius: 8px;
+  cursor: pointer;
+  text-transform: uppercase;
+  animation: pulse 2s infinite;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.roll-btn-large:hover {
+  background: #f39c12;
+  transform: translateY(-2px);
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}

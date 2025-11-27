@@ -127,33 +127,10 @@ io.on('connection', (socket) => {
         if(result.error) socket.emit('error', result.error);
         else {
             broadcastGameState(gameId);
-            io.to(gameId).emit('rollResult', { playerName: 'Someone', ...result.rollResult });
         }
     }
   });
 
-  // In server.js
-
-  socket.on('challengeCard', () => {
-    const gameId = playerMap.get(socket.id);
-    const game = games.get(gameId);
-    if (game) {
-        game.initiateChallenge(socket.id);
-        broadcastGameState(gameId);
-
-        // DELAYED RESOLUTION so players can see the roll result
-        setTimeout(() => {
-            const result = game.resolveChallenge();
-            if (result) {
-                broadcastGameState(gameId);
-                io.to(gameId).emit('rollResult', { 
-                    playerName: 'System', 
-                    message: result.message 
-                });
-            }
-        }, 3000); // 3 seconds delay to read the roll
-    }
-  });
 
   socket.on('attackMonster', (monsterId) => {
     const gameId = playerMap.get(socket.id);
@@ -163,13 +140,8 @@ io.on('connection', (socket) => {
         if(result.error) {
             socket.emit('error', result.error);
         } else {
+            // Just broadcast the state - the roll modal will open
             broadcastGameState(gameId);
-            io.to(gameId).emit('rollResult', { 
-                playerName: 'Attacker', 
-                total: result.attackResult.roll, 
-                isSuccess: result.attackResult.success,
-                message: result.attackResult.message 
-            });
         }
     }
   });
@@ -223,6 +195,14 @@ io.on('connection', (socket) => {
             // Just update the UI (showing who passed)
             broadcastGameState(gameId);
         }
+    }
+  });
+  socket.on('rollMainDice', () => {
+    const gameId = playerMap.get(socket.id);
+    const game = games.get(gameId);
+    if (game) {
+        game.rollMainDice(socket.id);
+        broadcastGameState(gameId);
     }
   });
 });
