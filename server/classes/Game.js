@@ -1,5 +1,6 @@
 // server/classes/Game.js
 const { generateDeck, MONSTERS, PARTY_LEADERS } = require('../data/cards');
+const Effects = require('../logic/effects');
 
 class Game {
   constructor(id) {
@@ -28,6 +29,67 @@ class Game {
       challengerId: null,
       rolling: false
     };
+    this.discardPile = [];
+    this.pendingInteraction = null; // { type: 'SELECT_HERO', sourcePlayerId, ... }
+  }
+
+  // This is called when the user clicks a target in the UI
+  handleInteraction(playerId, targetId) {
+    if (!this.pendingInteraction || this.pendingInteraction.sourcePlayerId !== playerId) return;
+
+    const interaction = this.pendingInteraction;
+    
+    // NEW: Handle Player Selection (targetId is a PlayerId here)
+    if (interaction.type === 'SELECT_PLAYER' && interaction.action === 'FORCE_DISCARD') {
+        this.handleForceDiscard(targetId, interaction.count);
+    } 
+    // OLD: Handle Card Selection (targetId is a CardId here)
+    else if (interaction.type === 'SELECT_HERO') {
+        if (interaction.action === 'DESTROY') this.destroyHero(targetId);
+        if (interaction.action === 'SACRIFICE') this.sacrificeHero(targetId);
+    }
+
+    this.pendingInteraction = null; // Clear interaction
+  }
+
+  destroyHero(uniqueId) {
+    this.players.forEach(p => {
+      const idx = p.party.findIndex(c => c.uniqueId === uniqueId);
+      if (idx !== -1) {
+        const card = p.party.splice(idx, 1)[0];
+        this.discardPile.push(card);
+      }
+    });
+  }
+
+  stealHero(newOwnerId, uniqueId) {
+    let stolenCard = null;
+    this.players.forEach(p => {
+        const idx = p.party.findIndex(c => c.uniqueId === uniqueId);
+        if (idx !== -1) stolenCard = p.party.splice(idx, 1)[0];
+    });
+    if (stolenCard) {
+        const newOwner = this.players.find(p => p.id === newOwnerId);
+        newOwner.party.push(stolenCard);
+    }
+    return stolenCard;
+  }
+
+  handleForceDiscard(targetPlayerId, count) {
+    const targetPlayer = this.players.find(p => p.id === targetPlayerId);
+    
+    if (targetPlayer) {
+        let discardedCount = 0;
+        for (let i = 0; i < count; i++) {
+            if (targetPlayer.hand.length > 0) {
+                const rIdx = Math.floor(Math.random() * targetPlayer.hand.length);
+                const card = targetPlayer.hand.splice(rIdx, 1)[0];
+                this.discardPile.push(card);
+                discardedCount++;
+            }
+        }
+        console.log(`Player ${targetPlayer.name} forced to discard ${discardedCount} cards.`);
+    }
   }
 
   addPlayer(id, name) {
@@ -335,41 +397,22 @@ class Game {
   }
 
   resolveHeroEffect(player, card) {
-    let msg = "";
-    switch (card.id) {
-        case 'h1': // Fighter
-            if (this.deck.length > 0) { player.hand.push(this.deck.pop()); msg = "Drew a card!"; }
-            break;
-        case 'h2': // Bard
-            if (this.deck.length > 0) { player.hand.push(this.deck.pop()); msg = "Bard Song! (Drew 1)"; }
-            break;
-        case 'h3': // Guardian
-             if (this.deck.length > 0) { player.hand.push(this.deck.pop()); msg = "Protected! (Drew 1)"; }
-            break;
-        case 'h4': // Ranger (Destroy Item)
-            const targetOpponent = this.players.find(p => p.id !== player.id && p.party.some(c => c.type === 'ITEM'));
-            if (targetOpponent) {
-                const idx = targetOpponent.party.findIndex(c => c.type === 'ITEM');
-                const destroyed = targetOpponent.party.splice(idx, 1)[0];
-                this.discardPile.push(destroyed);
-                msg = `Destroyed ${targetOpponent.name}'s ${destroyed.name}!`;
-            } else msg = "No items to destroy.";
-            break;
-        case 'h5': // Thief (Steal Card)
-            const victim = this.players.find(p => p.id !== player.id && p.hand.length > 0);
-            if (victim) {
-                const randIdx = Math.floor(Math.random() * victim.hand.length);
-                const stolen = victim.hand.splice(randIdx, 1)[0];
-                player.hand.push(stolen);
-                msg = `Stole card from ${victim.name}!`;
-            } else msg = "No one has cards.";
-            break;
-        case 'h6': // Wizard
-            if (this.deck.length > 0) { player.hand.push(this.deck.pop()); msg = "Magic Found! (Drew 1)"; }
-            break;
-        default: msg = "Effect triggered!"; break;
+    const effectFunc = Effects[card.id] || Effects['default'];
+    const result = effectFunc(this, player, card);
+
+    // If result is an object, it requires further interaction (like selecting a player)
+    if (typeof result === 'object') {
+      this.pendingInteraction = {
+        sourcePlayerId: player.id,
+        type: result.type,   // e.g., 'SELECT_PLAYER'
+        action: result.action, // e.g., 'FORCE_DISCARD'
+        count: result.count,
+        msg: result.msg
+      };
+      return result.msg; // Return status message
     }
-    return msg;
+
+    return result; // Return simple string success message
   }
 
   // --- STANDARD ACTIONS ---
@@ -550,6 +593,7 @@ class Game {
       activeRoll: this.activeRoll,
       actionPoints: this.actionPoints,
       challengeState: this.challengeState,
+      pendingInteraction: this.pendingInteraction,
       players: this.players.map(p => ({
         id: p.id, 
         name: p.name, 

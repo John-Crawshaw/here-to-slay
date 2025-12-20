@@ -205,6 +205,14 @@ io.on('connection', (socket) => {
         broadcastGameState(gameId);
     }
   });
+  socket.on('handleInteraction', (targetId) => {
+    const gameId = playerMap.get(socket.id);
+    const game = games.get(gameId);
+    if (game) {
+        game.handleInteraction(socket.id, targetId);
+        broadcastGameState(gameId);
+    }
+  });
 });
 
 const PORT = 3001;
