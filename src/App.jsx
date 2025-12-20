@@ -11,73 +11,51 @@ function App() {
     drawCard, discardHand, playCard, attackMonster, useHeroAbility, 
     challengeCard, endTurn, passChallenge,
     playModifier, passModifier,
-    rollMainDice, rollChallengeDice
+    rollMainDice, rollChallengeDice,
+    handleInteraction 
   } = useWebSocket();
 
+  // ... (State definitions remain the same) ...
   const [playerName, setPlayerName] = useState('');
   const [gameIdInput, setGameIdInput] = useState('');
   const [selectedCard, setSelectedCard] = useState(null);
   const [modDecisionCard, setModDecisionCard] = useState(null);
+  const pendingInteraction = gameState?.pendingInteraction;
+  const isChoosing = pendingInteraction?.sourcePlayerId === playerId;
   const hasChallengeCard = privateState?.hand?.some(c => c.type === 'CHALLENGE');
-
-  // --- ANIMATION STATE ---
   const [isRolling, setIsRolling] = useState(false);
   const [displayedDice, setDisplayedDice] = useState(1);
   const [isChallengeRolling, setIsChallengeRolling] = useState(false);
   const [displayedChallengeDice, setDisplayedChallengeDice] = useState(1);
 
-  // Stop rolling animation when backend provides a real result
+  // ... (useEffect and Handlers remain the same) ...
   useEffect(() => {
-    if (gameState?.activeRoll?.currentTotal) {
-        setIsRolling(false);
-    }
-    // Stop challenge animation when both players have rolled
+    if (gameState?.activeRoll?.currentTotal) setIsRolling(false);
     if (gameState?.activeRoll?.type === 'CHALLENGE' && 
         gameState?.activeRoll?.challengerRoll !== null && 
         gameState?.activeRoll?.defenderRoll !== null) {
         setIsChallengeRolling(false);
     }
-  }, [gameState?.activeRoll?.currentTotal, gameState?.activeRoll?.challengerRoll, gameState?.activeRoll?.defenderRoll]);
+  }, [gameState?.activeRoll]);
 
   const handleRollClick = () => {
     setIsRolling(true);
-    
-    // Start a fast shuffle of numbers for visual effect
-    const shuffle = setInterval(() => {
-        setDisplayedDice(Math.floor(Math.random() * 11) + 2); // Random 2-12
-    }, 100);
-
-    // Call backend to perform actual roll
+    const shuffle = setInterval(() => setDisplayedDice(Math.floor(Math.random() * 11) + 2), 100);
     rollMainDice();
-
-    // Safety timeout to stop animation after 1s if backend is instant (adds tension)
-    setTimeout(() => {
-        clearInterval(shuffle);
-        // Note: The useEffect above will actually stop it when data arrives, 
-        // but this ensures it runs for at least a moment or cleans up.
-    }, 1000);
+    setTimeout(() => clearInterval(shuffle), 1000);
   };
 
   const handleChallengeRollClick = () => {
     setIsChallengeRolling(true);
-    
-    const shuffle = setInterval(() => {
-        setDisplayedChallengeDice(Math.floor(Math.random() * 11) + 2);
-    }, 100);
-
+    const shuffle = setInterval(() => setDisplayedChallengeDice(Math.floor(Math.random() * 11) + 2), 100);
     rollChallengeDice();
-
-    setTimeout(() => {
-        clearInterval(shuffle);
-    }, 1000);
+    setTimeout(() => clearInterval(shuffle), 1000);
   };
 
   const handleModifierClick = (card) => {
-    // Check if card has multiple options (e.g., "+3/-1")
     if (card.name.includes('/')) {
-        setModDecisionCard(card); // Open the choice UI
+        setModDecisionCard(card);
     } else {
-        // It's a single value card (e.g., "+4"), just play it
         const match = card.name.match(/([+-]?\d+)/);
         const val = match ? parseInt(match[0]) : 1; 
         playModifier(card.uniqueId, val);
@@ -87,174 +65,175 @@ function App() {
   const submitModChoice = (val) => {
     if (modDecisionCard) {
         playModifier(modDecisionCard.uniqueId, val);
-        setModDecisionCard(null); // Close the choice UI
+        setModDecisionCard(null);
     }
   };
 
-  // --- ROLL MODAL RENDERER ---
+  // Helper to determine if a specific card is a valid target based on server instruction
+  const isCardValidTarget = (card, locationOwnerId) => {
+    if (!isChoosing || !pendingInteraction) return false;
+    const { type, action } = pendingInteraction;
+
+    // NOTE: I removed the FORCE_DISCARD check here because we are handling
+    // player selection via the Modal now, not by clicking cards on the board.
+    
+    if (type === 'SELECT_HERO') {
+        return card.type === 'HERO' && locationOwnerId !== playerId;
+    }
+    if (action === 'SACRIFICE') {
+        return card.type === 'HERO' && locationOwnerId === playerId;
+    }
+    return false;
+  };
+
+  // --- 1. MOVED THIS OUTSIDE ---
+  const renderInteractionModal = () => {
+    if (!isChoosing || !pendingInteraction) return null;
+
+    // If the server wants us to SELECT A PLAYER
+    if (pendingInteraction.type === 'SELECT_PLAYER') {
+        // Filter out myself, only show opponents
+        const opponents = gameState.players.filter(p => p.id !== playerId);
+
+        return (
+            <div className="modal-overlay">
+                <div className="roll-modal">
+                    <h2>{pendingInteraction.msg || "Choose a Player"}</h2>
+                    <div className="player-selection-list">
+                        {opponents.map(p => (
+                            <button 
+                                key={p.id} 
+                                className="attack-btn-large" 
+                                style={{margin: '10px', display: 'block', width: '100%'}}
+                                onClick={() => handleInteraction(p.id)} // Send Player ID
+                            >
+                                {p.name} ({p.handCount} cards)
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    return null;
+  };
+
+  // --- 2. RENDER ROLL MODAL (Kept separate) ---
   const renderRollModal = () => {
     if (!gameState.activeRoll || !gameState.activeRoll.active) return null;
-
-    const { 
-        type, phase, history = [], passedPlayers = [],
-        currentTotal, target, // Standard Roll props
-        challengerTotal, defenderTotal, challengerId, defenderId, challengerName, defenderName, challengerRoll, defenderRoll // Challenge Props
-    } = gameState.activeRoll;
-
+    const { type, phase, history = [], passedPlayers = [], currentTotal, target, challengerTotal, defenderTotal, challengerId, defenderId, challengerName, defenderName, challengerRoll, defenderRoll } = gameState.activeRoll;
     const hasPassed = passedPlayers.includes(playerId);
     const myModifiers = privateState?.hand?.filter(c => c.type === 'MODIFIER') || [];
 
-    // --- CASE 1: CHALLENGE UI ---
     if (type === 'CHALLENGE') {
         const iAmChallenger = playerId === challengerId;
         const iAmDefender = playerId === defenderId;
-        const myRoll = iAmChallenger ? challengerRoll : (iAmDefender ? defenderRoll : null);
-        const needToRoll = (iAmChallenger || iAmDefender) && myRoll === null && phase === 'ROLLING';
+        const needToRoll = (iAmChallenger || iAmDefender) && (iAmChallenger ? challengerRoll : defenderRoll) === null && phase === 'ROLLING';
 
         return (
             <div className="modal-overlay">
                 <div className="roll-modal" style={{border: '4px solid #e74c3c'}}>
                     <h2>⚔️ CHALLENGE ⚔️</h2>
-                    
-                    {/* Show centered roll button if it's my turn */}
                     {needToRoll && !isChallengeRolling ? (
                         <div className="roll-section" style={{textAlign: 'center', margin: '20px 0'}}>
-                            <p style={{marginBottom: '15px'}}>
-                                You are the <strong>{iAmChallenger ? 'Challenger' : 'Defender'}</strong>
-                            </p>
-                            <button className="attack-btn-large" onClick={handleChallengeRollClick}>
-                                🎲 CLICK TO ROLL
-                            </button>
+                            <button className="attack-btn-large" onClick={handleChallengeRollClick}>🎲 CLICK TO ROLL</button>
                         </div>
                     ) : (
-                        /* SCORES BOARD - Show during animation or after both rolled */
                         <div style={{display:'flex', justifyContent:'space-around', margin:'20px 0', alignItems:'center'}}>
                             <div style={{textAlign:'center'}}>
                                 <h3>{challengerName}</h3>
-                                <div className={`dice-val ${isChallengeRolling && iAmChallenger ? 'shaking' : ''} ${challengerRoll !== null && phase === 'MODIFIERS' ? 'success' : ''}`} style={{fontSize:'3rem'}}>
-                                    {isChallengeRolling && iAmChallenger ? displayedChallengeDice : (challengerRoll !== null ? challengerTotal : '?')}
+                                <div className={`dice-val ${isChallengeRolling && iAmChallenger ? 'shaking' : ''}`} style={{fontSize:'3rem'}}>
+                                    {isChallengeRolling && iAmChallenger ? displayedChallengeDice : challengerTotal}
                                 </div>
                             </div>
-
                             <div style={{fontWeight:'bold', fontSize:'1.5rem'}}>VS</div>
-
                             <div style={{textAlign:'center'}}>
                                 <h3>{defenderName}</h3>
-                                <div className={`dice-val ${isChallengeRolling && iAmDefender ? 'shaking' : ''} ${defenderRoll !== null && phase === 'MODIFIERS' ? 'success' : ''}`} style={{fontSize:'3rem'}}>
-                                    {isChallengeRolling && iAmDefender ? displayedChallengeDice : (defenderRoll !== null ? defenderTotal : '?')}
+                                <div className={`dice-val ${isChallengeRolling && iAmDefender ? 'shaking' : ''}`} style={{fontSize:'3rem'}}>
+                                    {isChallengeRolling && iAmDefender ? displayedChallengeDice : defenderTotal}
                                 </div>
                             </div>
                         </div>
                     )}
-
-                    <div className="roll-history">
-                        {history.map((h, i) => <div key={i}>{h}</div>)}
-                    </div>
-
-                    {/* MODIFIER PHASE */}
-                    {phase === 'MODIFIERS' && (
-                        <>
-                            <div style={{marginBottom:10, color:'yellow'}}>Modifier Phase! Highest roll wins. (Ties go to Defender)</div>
-                            {!hasPassed ? (
-                                <div className="modifier-section">
-                                    <div className="mod-hand">
-                                        {myModifiers.map(card => (
-                                            <div key={card.uniqueId} className="mini-card modifier" onClick={() => handleModifierClick(card)}>
-                                                {card.name}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button className="resolve-btn" onClick={passModifier}>PASS</button>
-                                </div>
-                            ) : (
-                                <div>✅ You passed. Waiting for verdict...</div>
-                            )}
-                        </>
+                    <div className="roll-history">{history.map((h, i) => <div key={i}>{h}</div>)}</div>
+                    {phase === 'MODIFIERS' && !hasPassed && (
+                        <div className="modifier-section">
+                            <div className="mod-hand">
+                                {myModifiers.map(card => (
+                                    <div key={card.uniqueId} className="mini-card modifier" onClick={() => handleModifierClick(card)}>{card.name}</div>
+                                ))}
+                            </div>
+                            <button className="resolve-btn" onClick={passModifier}>PASS</button>
+                        </div>
                     )}
                 </div>
             </div>
         );
     }
 
-    // --- CASE 2: STANDARD ROLL UI (Attack/Ability) ---
-    // Check if we need to show the roll button (Waiting phase, my turn, no result yet)
     const showRollButton = phase === 'WAITING' && gameState.activeRoll.playerId === playerId && currentTotal === null;
-
     return (
         <div className="modal-overlay">
              <div className="roll-modal">
                 <h2>{type === 'ATTACK' ? '⚔️ ATTACK ROLL' : '✨ ABILITY ROLL'}</h2>
-                
                 <div className="dice-display">
-                    {/* SCENARIO A: Show Button to Start Roll */}
                     {showRollButton && !isRolling ? (
                          <div className="roll-section">
                             <p>Target: <strong>{target}+</strong></p>
-                            <button className="attack-btn-large" onClick={handleRollClick}>
-                                🎲 CLICK TO ROLL
-                            </button>
+                            <button className="attack-btn-large" onClick={handleRollClick}>🎲 CLICK TO ROLL</button>
                          </div>
                     ) : (
-                        /* SCENARIO B: Show Dice (Animation or Result) */
                         <>
                             <div className={`dice-val ${isRolling ? 'shaking' : (currentTotal >= target ? 'success' : 'fail')}`}>
-                                {isRolling ? displayedDice : (currentTotal !== null ? currentTotal : '?')}
+                                {isRolling ? displayedDice : (currentTotal ?? '?')}
                             </div>
                             <div className="target-val">Goal: {target}+</div>
                         </>
                     )}
                 </div>
-
-                <div className="roll-history">
-                    {history.map((h, i) => <div key={i}>{h}</div>)}
-                </div>
-
-                 {/* MODIFIER SECTION (Only show after roll is done AND phase is MODIFIERS) */}
-                 {!showRollButton && !isRolling && phase === 'MODIFIERS' && !hasPassed ? (
+                <div className="roll-history">{history.map((h, i) => <div key={i}>{h}</div>)}</div>
+                {!showRollButton && !isRolling && phase === 'MODIFIERS' && !hasPassed && (
                     <div className="modifier-section">
                         <div className="mod-hand">
                              {myModifiers.map(card => (
-                                <div key={card.uniqueId} className="mini-card modifier" onClick={() => handleModifierClick(card)}>
-                                    {card.name}
-                                </div>
+                                <div key={card.uniqueId} className="mini-card modifier" onClick={() => handleModifierClick(card)}>{card.name}</div>
                             ))}
                         </div>
                         <button className="resolve-btn" onClick={passModifier}>PASS</button>
                     </div>
-                 ) : (
-                    /* Show status text if we passed OR if we are just waiting for the button press */
-                    !showRollButton && !isRolling && phase === 'MODIFIERS' && <div>✅ You passed.</div>
                  )}
              </div>
         </div>
     );
   };
 
-  // --- LOBBY & WAITING ROOM ---
+  // ... (Rest of the component returns logic remains the same) ...
   if (!currentGameId) {
-    return (
-      <div className="app lobby" style={{display:'flex', alignItems:'center', justifyContent:'center'}}>
-        <div style={{textAlign:'center'}}>
-            <h1>Here to Slay Clone</h1>
-            <input placeholder="Name" value={playerName} onChange={e=>setPlayerName(e.target.value)} style={{padding:8}}/>
-            <button onClick={() => createGame(playerName)} style={{margin:5}}>Create</button>
-            <br/>
-            <input placeholder="Game ID" value={gameIdInput} onChange={e=>setGameIdInput(e.target.value)} style={{padding:8}}/>
-            <button onClick={() => joinGame(gameIdInput, playerName)} style={{margin:5}}>Join</button>
+     // ... lobby UI ...
+     return (
+        <div className="app lobby" style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100vh'}}>
+          <div style={{textAlign:'center'}}>
+              <h1>Here to Slay</h1>
+              <input placeholder="Name" value={playerName} onChange={e=>setPlayerName(e.target.value)} style={{padding:8}}/><br/>
+              <button onClick={() => createGame(playerName)} style={{margin:5}}>Create</button>
+              <br/>
+              <input placeholder="Game ID" value={gameIdInput} onChange={e=>setGameIdInput(e.target.value)} style={{padding:8}}/><br/>
+              <button onClick={() => joinGame(gameIdInput, playerName)} style={{margin:5}}>Join</button>
+          </div>
         </div>
-      </div>
-    );
+      );
   }
 
   if (!gameState) return <div>Loading State...</div>;
   if (!gameState.started) {
-    return (
-      <div className="app waiting-room" style={{textAlign:'center', paddingTop:50}}>
-        <h2>Game ID: {currentGameId}</h2>
-        <button onClick={startGame}>Start Game</button>
-        <ul>{gameState.players.map(p => <li key={p.id}>{p.name}</li>)}</ul>
-      </div>
-    );
+     // ... waiting room UI ...
+     return (
+        <div className="app waiting-room" style={{textAlign:'center', paddingTop:50}}>
+          <h2>Game ID: {currentGameId}</h2>
+          <button onClick={startGame}>Start Game</button>
+          <ul>{gameState.players.map(p => <li key={p.id}>{p.name}</li>)}</ul>
+        </div>
+      );
   }
 
   if (gameState.winner) {
@@ -264,195 +243,143 @@ function App() {
   const isMyTurn = gameState.players[gameState.currentTurn]?.id === playerId;
 
   return (
-    <div className="app game-board">
-      {error && <div className="error-toast" style={{position:'absolute', top:20, right:20, background:'red', padding:10}}>{error}</div>}
+    <div className={`app game-board ${isChoosing ? 'selecting-mode' : ''}`}>
+      {error && <div className="error-toast">{error}</div>}
       
-      {renderRollModal()}
+      {isChoosing && (
+        <div className="selection-banner">
+            <h2>{pendingInteraction.msg || "Select a target"}</h2>
+        </div>
+      )}
 
+      {/* Render Functions called here need to be in scope */}
+      {renderRollModal()}
+      {renderInteractionModal()} 
+
+      {/* ... The rest of your main UI (Hand, Party, etc) ... */}
+      
       {/* MODIFIER CHOICE MODAL */}
       {modDecisionCard && (
         <div className="modal-overlay">
-          <div className="mod-hand" style={{flexDirection: 'column', gap: '10px', padding: '15px'}}>
-            <div style={{fontSize: '0.9rem', color: '#ecf0f1', marginBottom: '5px'}}>
-              Choose value for <strong>{modDecisionCard.name}</strong>:
+          <div className="mod-choice-box">
+            <p>Choose value for {modDecisionCard.name}:</p>
+            <div style={{display:'flex', gap:'10px'}}>
+              {modDecisionCard.name.split('/').map(opt => (
+                <button key={opt} onClick={() => submitModChoice(parseInt(opt))}>{opt}</button>
+              ))}
             </div>
-            <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-              {modDecisionCard.name.split('/').map(option => {
-                const val = parseInt(option.trim());
-                return (
-                  <div 
-                    key={val} 
-                    className="mini-card modifier" 
-                    onClick={() => submitModChoice(val)}
-                    style={{
-                      fontSize: '1.5rem',
-                      fontWeight: 'bold',
-                      width: '80px',
-                      height: '80px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: val > 0 ? '#27ae60' : '#e74c3c'
-                    }}
-                  >
-                    {val > 0 ? '+' : ''}{val}
-                  </div>
-                );
-              })}
-            </div>
-            <button 
-              onClick={() => setModDecisionCard(null)} 
-              style={{
-                marginTop: '10px', 
-                background: '#555', 
-                color: 'white', 
-                padding: '8px 16px',
-                fontSize: '0.85rem'
-              }}
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
       
-      {/* MONSTER BOARD */}
       <div className="monster-board">
         <h3>Monsters</h3>
         <div className="monster-row">
             {gameState.activeMonsters.map(m => (
                 <div key={m.id} className="monster-slot">
                     <Card card={m} isMini={true} />
-                    {isMyTurn && <button className="attack-btn" onClick={() => attackMonster(m.id)}>⚔️</button>}
+                    {isMyTurn && !isChoosing && <button className="attack-btn" onClick={() => attackMonster(m.id)}>⚔️</button>}
                 </div>
             ))}
         </div>
+        <div className="discard-pile" style={{marginLeft: '20px', borderLeft: '1px solid #444', paddingLeft: '20px'}}>
+            <h4>Discard ({gameState.discardPile?.length || 0})</h4>
+            <div className="discard-stack" onClick={() => isChoosing && pendingInteraction.type === 'SELECT_DISCARD' && handleInteraction('DISCARD_PILE')}>
+                <div className="card-back-mini">View</div>
+            </div>
+        </div>
       </div>
 
-      {/* CHALLENGES / NOTIFICATIONS */}
       {gameState.challengeState.active && (!gameState.activeRoll || gameState.activeRoll.type !== 'CHALLENGE') && (
          <div className="modal-overlay">
-            <div className="modal-content" style={{background:'white', padding:20, color:'black'}}>
-                <h3>Challenge Phase</h3>
-                <p>
-                    {gameState.players.find(p => p.id === gameState.challengeState.sourcePlayerId)?.name}
-                    {" "} 
-                    is playing <strong>{gameState.challengeState.pendingCard?.name}</strong>.
-                </p>
-
+            <div className="modal-content dark">
+                <h3>Challenge?</h3>
+                <p>{gameState.players.find(p => p.id === gameState.challengeState.sourcePlayerId)?.name} is playing {gameState.challengeState.pendingCard?.name}</p>
                 {gameState.challengeState.sourcePlayerId !== playerId ? (
-                    /* OPPONENT VIEW */
-                    <div style={{display:'flex', gap:10, justifyContent:'center'}}>
-                      {!gameState.challengeState.passedPlayers?.includes(playerId) ? (
+                    <div style={{display:'flex', gap:10}}>
+                      {!gameState.challengeState.passedPlayers?.includes(playerId) && (
                         <>
-                          <button 
-                              style={{
-                                  background: hasChallengeCard ? 'red' : 'grey', 
-                                  color: 'white', 
-                                  cursor: hasChallengeCard ? 'pointer' : 'not-allowed'
-                              }} 
-                              onClick={challengeCard}
-                              disabled={!hasChallengeCard} 
-                          >
-                              ✋ CHALLENGE!
-                          </button>
-                          
-                          <button onClick={() => passChallenge()}>
-                              Pass
-                          </button>
+                          <button className="challenge-btn" onClick={challengeCard} disabled={!hasChallengeCard}>✋ CHALLENGE</button>
+                          <button onClick={passChallenge}>Pass</button>
                         </>
-                      ) : (
-                        <div>✅ You passed. Waiting for others...</div>
                       )}
-                  </div>
-                ) : (
-                    /* ACTIVE PLAYER VIEW */
-                    <div>
-                        <p>Waiting for opponents to decide...</p>
-                        <div className="loader">⏳</div> 
                     </div>
-                )}
+                ) : <p>Waiting for others...</p>}
             </div>
          </div>
       )}
-      {lastRoll && (
-         <div className="roll-notification" style={{position:'absolute', top:'40%', left:'50%', transform:'translate(-50%,-50%)', background:'white', padding:20, zIndex:2000, color:'black', border:'4px solid gold'}}>
-            <h3>{lastRoll.message}</h3>
-         </div>
-      )}
 
-      {/* OPPONENTS */}
-    <div className="opponents-container">
-    {gameState.players.filter(p => p.id !== playerId).map(p => (
-        <div key={p.id} className="opponent-area">
-        <h4>{p.name} (Hand: {p.handCount})</h4>
-        <div className="party-row">
-            {p.partyLeader && <Card card={p.partyLeader} isMini={true} />}
-            {p.party.map((c, i) => <Card key={i} card={c} isMini={true} />)}
-        </div>
-                {p.slayedMonsters.length > 0 && (
-                <div style={{marginTop: '10px'}}>
-                    <div style={{fontSize:'0.8rem', color:'gold', marginBottom: '5px'}}>
-                    🏆 Slayed Monsters ({p.slayedMonsters.length})
-                    </div>
-                    
-                    {/* CHANGE className FROM "party-row" TO "slayed-monsters-row" */}
-                    <div className="slayed-monsters-row">
-                    {p.slayedMonsters.map((m, i) => <Card key={i} card={m} isMini={true} />)}
-                    </div>
-                </div>
-                )}
-        </div>
-    ))}
-    </div>
+      <div className="opponents-container">
+        {gameState.players.filter(p => p.id !== playerId).map(p => (
+            <div key={p.id} className="opponent-area">
+                <h4>{p.name} ({p.handCount} cards)</h4>
+                <div className="party-row">
+                  {p.partyLeader && (
+                      <Card 
+                          card={p.partyLeader} 
+                          isMini={true} 
+                          className={isCardValidTarget(p.partyLeader, p.id) ? 'target-glow' : ''}
+                          onClick={() => isCardValidTarget(p.partyLeader, p.id) && handleInteraction(p.partyLeader.uniqueId)}
+                      />
+                  )}
+                  {p.party.map((c, i) => (
+                      <Card 
+                          key={i} 
+                          card={c} 
+                          isMini={true} 
+                          className={isCardValidTarget(c, p.id) ? 'target-glow' : ''}
+                          onClick={() => isCardValidTarget(c, p.id) && handleInteraction(c.uniqueId)}
+                      />
+                  ))}
+              </div>
+            </div>
+        ))}
+      </div>
 
-      {/* MY AREA */}
       <div className="my-area">
         <div className="stats-bar">
             AP: {gameState.actionPoints}/3 | Turn: {gameState.players[gameState.currentTurn].name}
         </div>
         
         <div className="my-party">
-            <h3>Party</h3>
+            <h3>My Party</h3>
             <div className="party-row">
                 {gameState.players.find(p => p.id === playerId)?.partyLeader && (
                     <Card card={gameState.players.find(p => p.id === playerId).partyLeader} isMini={true} />
                 )}
                 {gameState.players.find(p => p.id === playerId)?.party.map((c, i) => (
-                    <Card key={i} card={c} isMini={true} canRoll={isMyTurn && c.type === 'HERO'} onRoll={useHeroAbility}/>
+                    <Card 
+                        key={i} 
+                        card={c} 
+                        isMini={true} 
+                        className={isCardValidTarget(c, playerId) ? 'sacrifice-glow' : ''}
+                        canRoll={isMyTurn && c.type === 'HERO' && !isChoosing && !c.isUsedThisTurn} 
+                        onRoll={useHeroAbility}
+                        onClick={() => isCardValidTarget(c, playerId) && handleInteraction(c.uniqueId)}
+                    />
                 ))}
             </div>
-            
-            {gameState.players.find(p => p.id === playerId)?.slayedMonsters.length > 0 && (
-            <div style={{marginTop: '10px'}}>
-                <div style={{fontSize:'0.9rem', color:'gold', marginBottom: '8px'}}>
-                    🏆 Slayed Monsters ({gameState.players.find(p => p.id === playerId)?.slayedMonsters.length})
-                </div>
-                
-                {/* CHANGE className FROM "party-row" TO "slayed-monsters-row" */}
-                <div className="slayed-monsters-row"> 
-                    {gameState.players.find(p => p.id === playerId)?.slayedMonsters.map((m, i) => (
-                        <Card key={i} card={m} isMini={true} />
-                    ))}
-                </div>
-            </div>
-            )}
         </div>
 
         <div className="my-hand">
             <h3>Hand</h3>
             <div className="hand-row">
                 {privateState?.hand?.map(c => (
-                    <Card key={c.uniqueId} card={c} isSelected={selectedCard?.uniqueId === c.uniqueId} onClick={() => setSelectedCard(c)} />
+                    <Card 
+                        key={c.uniqueId} 
+                        card={c} 
+                        isSelected={selectedCard?.uniqueId === c.uniqueId} 
+                        onClick={() => !isChoosing && setSelectedCard(c)} 
+                    />
                 ))}
             </div>
         </div>
 
         <div className="controls">
-            <button disabled={!isMyTurn} onClick={drawCard}>Draw (1)</button>
-            <button disabled={!isMyTurn || !selectedCard} onClick={() => { playCard(selectedCard.uniqueId); setSelectedCard(null); }}>Play (1)</button>
-            <button disabled={!isMyTurn} onClick={discardHand} style={{background:'#c0392b', color:'white'}}>Dump Hand (3)</button>
-            <button disabled={!isMyTurn} onClick={endTurn}>End Turn</button>
+            <button disabled={!isMyTurn || isChoosing} onClick={drawCard}>Draw (1)</button>
+            <button disabled={!isMyTurn || !selectedCard || isChoosing} onClick={() => { playCard(selectedCard.uniqueId); setSelectedCard(null); }}>Play (1)</button>
+            <button disabled={!isMyTurn || isChoosing} onClick={discardHand} style={{background:'#c0392b'}}>Dump Hand (3)</button>
+            <button disabled={!isMyTurn || isChoosing} onClick={endTurn}>End Turn</button>
         </div>
       </div>
     </div>

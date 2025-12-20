@@ -89,6 +89,7 @@ export const useWebSocket = () => {
   // Note: resolveRoll is technically no longer needed as a user action since the server auto-resolves on consensus, 
   // but if you kept a force-resolve button for debugging:
   const resolveRoll = () => socketRef.current.emit('resolveRoll'); 
+  const handleInteraction = (targetId) => socketRef.current.emit('handleInteraction', targetId);
 
   return {
     gameState, privateState, playerId, currentGameId, error, lastRoll,
@@ -97,6 +98,6 @@ export const useWebSocket = () => {
     challengeCard, passChallenge, endTurn, 
     // Export new functions
     playModifier, passModifier, resolveRoll, rollChallengeDice, resolveNoChallenge,
-    rollMainDice,
+    rollMainDice, handleInteraction,
   };
 };
